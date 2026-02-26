@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Focus Timer</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --border: #222;
+    --accent: #e8ff47;
+    --accent2: #ff6b35;
+    --text: #f0f0f0;
+    --muted: #555;
+    --work-color: #e8ff47;
+    --break-color: #47d4ff;
+    --long-color: #b47fff;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Animated grain overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    opacity: 0.4;
+    z-index: 100;
+  }
+
+  /* Subtle grid */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    width: 100%;
+    max-width: 520px;
+    padding: 24px;
+  }
+
+  /* Mode tabs */
+  .modes {
+    display: flex;
+    gap: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px;
+  }
+
+  .mode-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .mode-btn.active {
+    color: var(--bg);
+    font-weight: 500;
+  }
+
+  .mode-btn[data-mode="work"].active { background: var(--work-color); }
+  .mode-btn[data-mode="break"].active { background: var(--break-color); }
+  .mode-btn[data-mode="long"].active { background: var(--long-color); }
+
+  /* Main timer display */
+  .timer-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  svg.ring {
+    transform: rotate(-90deg);
+    filter: drop-shadow(0 0 20px currentColor);
+  }
+
+  .ring-bg { fill: none; stroke: var(--border); stroke-width: 3; }
+  .ring-progress {
+    fill: none;
+    stroke-width: 3;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear, stroke 0.4s;
+  }
+
+  .timer-inner {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .timer-display {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 96px;
+    line-height: 1;
+    letter-spacing: 4px;
+    transition: color 0.4s;
+  }
+
+  .session-label {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    padding: 12px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  .btn:hover { border-color: var(--muted); }
+
+  .btn-primary {
+    font-size: 14px;
+    padding: 16px 48px;
+    border-color: currentColor;
+    transition: all 0.2s;
+  }
+
+  .btn-primary:hover {
+    transform: scale(1.03);
+  }
+
+  /* Stats bar */
+  .stats {
+    display: flex;
+    gap: 32px;
+    border-top: 1px solid var(--border);
+    padding-top: 24px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .stat-value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    letter-spacing: 2px;
+    transition: color 0.4s;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* Task input */
+  .task-section {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .task-label {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .task-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 12px 16px;
+    border-radius: 4px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .task-input:focus { border-color: var(--muted); }
+  .task-input::placeholder { color: var(--muted); }
+
+  /* Distraction log */
+  .distraction-section {
+    width: 100%;
+  }
+
+  .distraction-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .distraction-log {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    max-height: 100px;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .distraction-log:empty::after {
+    content: 'park distracting thoughts here — come back later';
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .distraction-item {
+    font-size: 11px;
+    color: var(--muted);
+    padding: 3px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .distraction-item:last-child { border-bottom: none; }
+  .distraction-item::before { content: '→ '; color: var(--accent2); }
+
+  .distraction-input-wrap {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .distraction-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    outline: none;
+  }
+
+  .distraction-input::placeholder { color: var(--muted); }
+
+  .btn-add {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-add:hover { color: var(--text); border-color: var(--muted); }
+
+  /* Session dots */
+  .session-dots {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: all 0.3s;
+  }
+
+  .dot.filled { background: var(--work-color); }
+
+  /* Notification banner */
+  .banner {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-80px);
+    background: var(--accent);
+    color: var(--bg);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 12px 24px;
+    border-radius: 4px;
+    z-index: 200;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    white-space: nowrap;
+  }
+
+  .banner.show { transform: translateX(-50%) translateY(0); }
+
+  /* Color transitions */
+  .work-active .timer-display,
+  .work-active .stat-value { color: var(--work-color); }
+  .break-active .timer-display,
+  .break-active .stat-value { color: var(--break-color); }
+  .long-active .timer-display,
+  .long-active .stat-value { color: var(--long-color); }
+
+  .work-active .btn-primary { color: var(--work-color); border-color: var(--work-color); }
+  .break-active .btn-primary { color: var(--break-color); border-color: var(--break-color); }
+  .long-active .btn-primary { color: var(--long-color); border-color: var(--long-color); }
+
+  /* Pulse when running */
+  @keyframes pulse-ring {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  .running svg.ring { animation: pulse-ring 4s ease-in-out infinite; }
+
+  /* Scrollbar */
+  .distraction-log::-webkit-scrollbar { width: 4px; }
+  .distraction-log::-webkit-scrollbar-track { background: transparent; }
+  .distraction-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div id="banner" class="banner">Time's up!</div>
+
+<div class="container" id="app">
+  <!-- Mode selector -->
+  <div class="modes">
+    <button class="mode-btn active" data-mode="work" onclick="setMode('work')">Focus</button>
+    <button class="mode-btn" data-mode="break" onclick="setMode('break')">Short Break</button>
+    <button class="mode-btn" data-mode="long" onclick="setMode('long')">Long Break</button>
+  </div>
+
+  <!-- Task -->
+  <div class="task-section">
+    <div class="task-label">Working on</div>
+    <input class="task-input" id="taskInput" placeholder="What are you focusing on?" maxlength="80" />
+  </div>
+
+  <!-- Ring timer -->
+  <div class="timer-wrap">
+    <svg class="ring" id="timerRing" width="220" height="220" viewBox="0 0 220 220">
+      <circle class="ring-bg" cx="110" cy="110" r="100"/>
+      <circle class="ring-progress" id="ringProgress" cx="110" cy="110" r="100" stroke="#e8ff47"/>
+    </svg>
+    <div class="timer-inner">
+      <div class="timer-display" id="timerDisplay">25:00</div>
+      <div class="session-dots" id="sessionDots"></div>
+      <div class="session-label" id="sessionLabel">focus session</div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn" onclick="resetTimer()">Reset</button>
+    <button class="btn btn-primary" id="startBtn" onclick="toggleTimer()">Start</button>
+    <button class="btn" onclick="skipSession()">Skip</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-value" id="statPomodoros">0</div>
+      <div class="stat-label">Sessions</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="statFocusTime">0m</div>
+      <div class="stat-label">Focus Time</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="statDistractions">0</div>
+      <div class="stat-label">Captured</div>
+    </div>
+  </div>
+
+  <!-- Distraction parking lot -->
+  <div class="distraction-section">
+    <div class="distraction-header">
+      <div class="task-label">Distraction Parking Lot</div>
+      <div class="task-label" style="color:#444">capture & keep going</div>
+    </div>
+    <div class="distraction-log" id="distractionLog"></div>
+    <div class="distraction-input-wrap">
+      <input class="distraction-input" id="distractionInput" placeholder="Thought popped up? Park it here..." maxlength="100" />
+      <button class="btn-add" onclick="addDistraction()">+ Park</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const MODES = {
+  work:  { label: 'focus session',     mins: 25, color: '#e8ff47', ringColor: '#e8ff47', cls: 'work-active' },
+  break: { label: 'short break',       mins: 5,  color: '#47d4ff', ringColor: '#47d4ff', cls: 'break-active' },
+  long:  { label: 'long break',        mins: 15, color: '#b47fff', ringColor: '#b47fff', cls: 'long-active' },
+};
+
+let mode = 'work';
+let running = false;
+let interval = null;
+let totalSecs = 25 * 60;
+let remaining = totalSecs;
+let pomodoroCount = 0;
+let totalFocusSecs = 0;
+let distractionCount = 0;
+let distractions = [];
+
+const CIRC = 2 * Math.PI * 100;
+
+const app = document.getElementById('app');
+const display = document.getElementById('timerDisplay');
+const startBtn = document.getElementById('startBtn');
+const ringProgress = document.getElementById('ringProgress');
+const sessionLabel = document.getElementById('sessionLabel');
+const sessionDots = document.getElementById('sessionDots');
+const distractionLog = document.getElementById('distractionLog');
+const banner = document.getElementById('banner');
+
+function setMode(m) {
+  if (running) return;
+  mode = m;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+  totalSecs = MODES[m].mins * 60;
+  remaining = totalSecs;
+  updateDisplay();
+  updateRing();
+  sessionLabel.textContent = MODES[m].label;
+  document.querySelectorAll('.work-active,.break-active,.long-active').forEach(el => el.classList.remove('work-active','break-active','long-active'));
+  app.classList.add(MODES[m].cls);
+  ringProgress.setAttribute('stroke', MODES[m].ringColor);
+}
+
+function toggleTimer() {
+  if (running) {
+    pause();
+  } else {
+    start();
+  }
+}
+
+function start() {
+  running = true;
+  startBtn.textContent = 'Pause';
+  app.classList.add('running');
+  interval = setInterval(tick, 1000);
+}
+
+function pause() {
+  running = false;
+  startBtn.textContent = 'Resume';
+  app.classList.remove('running');
+  clearInterval(interval);
+}
+
+function tick() {
+  remaining--;
+  if (mode === 'work') totalFocusSecs++;
+  updateDisplay();
+  updateRing();
+  updateStats();
+
+  if (remaining <= 0) {
+    clearInterval(interval);
+    running = false;
+    app.classList.remove('running');
+    onComplete();
+  }
+}
+
+function onComplete() {
+  if (mode === 'work') {
+    pomodoroCount++;
+    updateDots();
+    updateStats();
+    showBanner('🎯 Focus session done! Take a break.');
+    // Auto suggest break
+    if (pomodoroCount % 4 === 0) {
+      setTimeout(() => setMode('long'), 1200);
+    } else {
+      setTimeout(() => setMode('break'), 1200);
+    }
+  } else {
+    showBanner('✓ Break over. Ready to focus?');
+    setTimeout(() => setMode('work'), 1200);
+  }
+  startBtn.textContent = 'Start';
+  playBeep();
+}
+
+function resetTimer() {
+  clearInterval(interval);
+  running = false;
+  remaining = totalSecs;
+  startBtn.textContent = 'Start';
+  app.classList.remove('running');
+  updateDisplay();
+  updateRing();
+}
+
+function skipSession() {
+  clearInterval(interval);
+  running = false;
+  app.classList.remove('running');
+  startBtn.textContent = 'Start';
+  if (mode === 'work') setMode('break');
+  else setMode('work');
+}
+
+function updateDisplay() {
+  const m = Math.floor(remaining / 60).toString().padStart(2, '0');
+  const s = (remaining % 60).toString().padStart(2, '0');
+  display.textContent = `${m}:${s}`;
+}
+
+function updateRing() {
+  const pct = remaining / totalSecs;
+  const offset = CIRC * (1 - pct);
+  ringProgress.style.strokeDasharray = CIRC;
+  ringProgress.style.strokeDashoffset = offset;
+}
+
+function updateDots() {
+  sessionDots.innerHTML = '';
+  for (let i = 0; i < 4; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i < (pomodoroCount % 4 || (pomodoroCount > 0 && pomodoroCount % 4 === 0 ? 4 : 0)) ? ' filled' : '');
+    sessionDots.appendChild(d);
+  }
+}
+
+function updateStats() {
+  document.getElementById('statPomodoros').textContent = pomodoroCount;
+  const mins = Math.floor(totalFocusSecs / 60);
+  document.getElementById('statFocusTime').textContent = mins + 'm';
+  document.getElementById('statDistractions').textContent = distractionCount;
+}
+
+function addDistraction() {
+  const input = document.getElementById('distractionInput');
+  const val = input.value.trim();
+  if (!val) return;
+  distractions.push(val);
+  distractionCount++;
+  input.value = '';
+  const item = document.createElement('div');
+  item.className = 'distraction-item';
+  item.textContent = val;
+  if (distractionLog.childElementCount === 0) {
+    // remove placeholder
+    distractionLog.style.cssText = '';
+  }
+  distractionLog.appendChild(item);
+  distractionLog.scrollTop = distractionLog.scrollHeight;
+  updateStats();
+}
+
+document.getElementById('distractionInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addDistraction();
+});
+
+function showBanner(msg) {
+  banner.textContent = msg;
+  banner.classList.add('show');
+  setTimeout(() => banner.classList.remove('show'), 3000);
+}
+
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.15, 0.3].forEach((t, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = i === 2 ? 880 : 660;
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + t);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.2);
+      osc.start(ctx.currentTime + t);
+      osc.stop(ctx.currentTime + t + 0.2);
+    });
+  } catch(e) {}
+}
+
+// Init
+updateDisplay();
+updateRing();
+app.classList.add('work-active');
+updateDots();
+ringProgress.style.strokeDasharray = CIRC;
+ringProgress.style.strokeDashoffset = 0;
+</script>
+</body>
+</html>
